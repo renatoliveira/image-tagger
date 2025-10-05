@@ -1,5 +1,6 @@
 import sys
 import os
+import random
 from pathlib import Path
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
                              QWidget, QPushButton, QLabel, QFileDialog, QComboBox,
@@ -7,7 +8,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                              QToolBar, QFrame, QScrollArea, QListWidget, QListWidgetItem,
                              QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QColorDialog)
 from PyQt6.QtCore import Qt, QPoint, QRect, QSize, pyqtSignal, QTimer
-from PyQt6.QtGui import QPixmap, QPainter, QPen, QBrush, QColor, QAction, QKeySequence
+from PyQt6.QtGui import QPixmap, QPainter, QPen, QBrush, QColor, QAction, QKeySequence, QClipboard
 from PIL import Image
 import json
 
@@ -48,6 +49,7 @@ class ImageCanvas(QWidget):
     bounding_box_created = pyqtSignal(object)
     bounding_box_selected = pyqtSignal(object)
     bounding_box_deleted = pyqtSignal(object)
+    bounding_box_class_edit_requested = pyqtSignal(object)
 
     def __init__(self):
         super().__init__()
@@ -66,6 +68,8 @@ class ImageCanvas(QWidget):
         self.drawing = False
         self.start_point = QPoint()
         self.selected_box = None
+        self.selected_boxes = []  # For multi-selection
+        self.clipboard_boxes = []  # For copy/paste operations
 
         # Class management
         self.classes = ["object"]  # Default class
@@ -93,6 +97,7 @@ class ImageCanvas(QWidget):
             self.scale_to_fit()
             self.bounding_boxes.clear()
             self.selected_box = None
+            self.selected_boxes.clear()
             self.update()
 
             # Load existing annotations if they exist
@@ -193,6 +198,97 @@ class ImageCanvas(QWidget):
         if 0 <= class_index < len(self.classes):
             self.current_class_index = class_index
 
+    def select_all_boxes(self):
+        """Select all bounding boxes in the current image"""
+        self.selected_boxes = self.bounding_boxes.copy()
+        if self.bounding_boxes:
+            self.selected_box = self.bounding_boxes[0]  # Set primary selection
+        self.update()
+
+    def copy_boxes(self):
+        """Copy selected boxes to clipboard"""
+        if self.selected_boxes:
+            self.clipboard_boxes = []
+            for box in self.selected_boxes:
+                # Create a copy of the box
+                copied_box = BoundingBox(
+                    box.x, box.y, box.width, box.height,
+                    box.class_index, box.class_name
+                )
+                self.clipboard_boxes.append(copied_box)
+
+    def cut_boxes(self):
+        """Cut selected boxes to clipboard and remove them"""
+        if self.selected_boxes:
+            self.copy_boxes()
+            for box in self.selected_boxes:
+                if box in self.bounding_boxes:
+                    self.bounding_boxes.remove(box)
+            self.selected_boxes = []
+            self.selected_box = None
+            self.update()
+
+    def paste_boxes(self):
+        """Paste boxes from clipboard"""
+        if self.clipboard_boxes:
+            for box in self.clipboard_boxes:
+                # Create a new box with slight offset to avoid overlap
+                new_x = box.x + 10
+                new_y = box.y + 10
+
+                # Constrain to image bounds
+                x, y, width, height = self.constrain_to_image_bounds(
+                    new_x, new_y, box.width, box.height
+                )
+
+                new_box = BoundingBox(
+                    x, y, width, height,
+                    box.class_index, box.class_name
+                )
+                self.bounding_boxes.append(new_box)
+            self.update()
+
+    def generate_random_color(self):
+        """Generate a random color with RGB values between 50 and 205"""
+        r = random.randint(50, 205)
+        g = random.randint(50, 205)
+        b = random.randint(50, 205)
+        return QColor(r, g, b)
+
+    def switch_to_next_class(self):
+        """Switch to the next class in the list"""
+        if len(self.classes) > 1:
+            self.current_class_index = (self.current_class_index + 1) % len(self.classes)
+
+    def switch_to_previous_class(self):
+        """Switch to the previous class in the list"""
+        if len(self.classes) > 1:
+            self.current_class_index = (self.current_class_index - 1) % len(self.classes)
+
+    def constrain_to_image_bounds(self, x, y, width, height):
+        """Constrain bounding box coordinates to stay within image bounds"""
+        if self.original_pixmap is None:
+            return x, y, width, height
+
+        img_width = self.original_pixmap.width()
+        img_height = self.original_pixmap.height()
+
+        # Ensure minimum size
+        width = max(10, width)
+        height = max(10, height)
+
+        # Constrain position and size to image bounds
+        x = max(0, min(x, img_width - width))
+        y = max(0, min(y, img_height - height))
+
+        # Ensure the box doesn't exceed image boundaries
+        if x + width > img_width:
+            width = img_width - x
+        if y + height > img_height:
+            height = img_height - y
+
+        return x, y, width, height
+
     def get_image_coordinates(self, widget_point):
         """Convert widget coordinates to image coordinates"""
         if self.scaled_pixmap is None:
@@ -291,7 +387,7 @@ class ImageCanvas(QWidget):
 
                 # Draw box
                 pen = QPen(color, 2)
-                if box == self.selected_box:
+                if box == self.selected_box or box in self.selected_boxes:
                     pen.setWidth(3)
                     pen.setStyle(Qt.PenStyle.DashLine)
                 painter.setPen(pen)
@@ -419,6 +515,16 @@ class ImageCanvas(QWidget):
                         self.current_box.y += self.current_box.height
                         self.current_box.height = abs(self.current_box.height)
 
+                    # Constrain to image bounds
+                    x, y, width, height = self.constrain_to_image_bounds(
+                        self.current_box.x, self.current_box.y,
+                        self.current_box.width, self.current_box.height
+                    )
+                    self.current_box.x = x
+                    self.current_box.y = y
+                    self.current_box.width = width
+                    self.current_box.height = height
+
                     self.bounding_boxes.append(self.current_box)
                     self.bounding_box_created.emit(self.current_box)
                     self.selected_box = self.current_box
@@ -440,6 +546,22 @@ class ImageCanvas(QWidget):
 
         elif event.button() == Qt.MouseButton.RightButton:
             self.panning = False
+
+    def mouseDoubleClickEvent(self, event):
+        """Handle mouse double-click events"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            img_point = self.get_image_coordinates(event.pos())
+
+            # Find the bounding box that was double-clicked
+            clicked_box = None
+            for box in reversed(self.bounding_boxes):  # Check from top to bottom
+                if box.contains_point(img_point):
+                    clicked_box = box
+                    break
+
+            if clicked_box:
+                # Emit signal to open class selection dialog
+                self.bounding_box_class_edit_requested.emit(clicked_box)
 
     def wheelEvent(self, event):
         """Handle mouse wheel for zooming"""
@@ -506,9 +628,15 @@ class ImageCanvas(QWidget):
         if 'bottom' in handle:
             self.selected_box.height = self.drag_start_box.height + delta_y
 
-        # Ensure minimum size
-        self.selected_box.width = max(10, self.selected_box.width)
-        self.selected_box.height = max(10, self.selected_box.height)
+        # Constrain to image bounds
+        x, y, width, height = self.constrain_to_image_bounds(
+            self.selected_box.x, self.selected_box.y,
+            self.selected_box.width, self.selected_box.height
+        )
+        self.selected_box.x = x
+        self.selected_box.y = y
+        self.selected_box.width = width
+        self.selected_box.height = height
 
     def move_box(self, current_pos):
         """Move the selected box based on the current mouse position"""
@@ -522,8 +650,15 @@ class ImageCanvas(QWidget):
         delta_y = current_img_pos.y() - start_img_pos.y()
 
         # Apply the delta to the original position
-        self.selected_box.x = self.drag_start_box.x + delta_x
-        self.selected_box.y = self.drag_start_box.y + delta_y
+        new_x = self.drag_start_box.x + delta_x
+        new_y = self.drag_start_box.y + delta_y
+
+        # Constrain to image bounds
+        x, y, width, height = self.constrain_to_image_bounds(
+            new_x, new_y, self.selected_box.width, self.selected_box.height
+        )
+        self.selected_box.x = x
+        self.selected_box.y = y
 
     def update_cursor(self, pos):
         """Update cursor based on what's under the mouse"""
@@ -693,6 +828,130 @@ class ClassManagerDialog(QDialog):
             self.class_list.takeItem(current_row)
 
 
+class QuickAddClassDialog(QDialog):
+    """Quick dialog for adding a new class with keyboard shortcut"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add New Class")
+        self.setModal(True)
+        self.resize(300, 150)
+
+        layout = QFormLayout()
+
+        # Class name input
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("Enter class name...")
+        layout.addRow("Class Name:", self.name_edit)
+
+        # Color button
+        self.color_button = QPushButton("Choose Color")
+        self.color = self.generate_random_color()
+        self.color_button.setStyleSheet(f"background-color: {self.color.name()}")
+        self.color_button.clicked.connect(self.choose_color)
+        layout.addRow("Color:", self.color_button)
+
+        # Dialog buttons
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.setLayout(layout)
+
+        # Focus on name input and select all text
+        self.name_edit.setFocus()
+        self.name_edit.selectAll()
+
+    def generate_random_color(self):
+        """Generate a random color with RGB values between 50 and 205"""
+        r = random.randint(50, 205)
+        g = random.randint(50, 205)
+        b = random.randint(50, 205)
+        return QColor(r, g, b)
+
+    def choose_color(self):
+        """Open color dialog to choose color"""
+        color = QColorDialog.getColor(self.color, self)
+        if color.isValid():
+            self.color = color
+            self.color_button.setStyleSheet(f"background-color: {color.name()}")
+
+    def get_class_name(self):
+        """Get the entered class name"""
+        return self.name_edit.text().strip()
+
+    def get_color(self):
+        """Get the selected color"""
+        return self.color
+
+
+class ClassSelectionDialog(QDialog):
+    """Dialog for selecting a class for a bounding box"""
+
+    def __init__(self, classes, colors, current_class_index, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Select Class")
+        self.setModal(True)
+        self.resize(300, 120)
+
+        self.classes = classes
+        self.colors = colors
+        self.selected_index = current_class_index
+
+
+        layout = QVBoxLayout()
+
+        # Class selection dropdown
+        self.class_combo = QComboBox()
+        for i, (class_name, color) in enumerate(zip(self.classes, self.colors)):
+            self.class_combo.addItem(class_name)
+            # Set item color (this is a simplified approach)
+            self.class_combo.setItemData(i, color, Qt.ItemDataRole.BackgroundRole)
+
+        self.class_combo.setCurrentIndex(current_class_index)
+        layout.addWidget(QLabel("Select Class:"))
+        layout.addWidget(self.class_combo)
+
+        # Dialog buttons
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.setLayout(layout)
+
+        # Focus on combo box and make it ready for keyboard navigation
+        self.class_combo.setFocus()
+        self.class_combo.showPopup()
+
+    def keyPressEvent(self, event):
+        """Handle keyboard events for arrow navigation"""
+        if event.key() == Qt.Key.Key_Up:
+            # Move to previous class
+            current_index = self.class_combo.currentIndex()
+            new_index = (current_index - 1) % len(self.classes)
+            self.class_combo.setCurrentIndex(new_index)
+        elif event.key() == Qt.Key.Key_Down:
+            # Move to next class
+            current_index = self.class_combo.currentIndex()
+            new_index = (current_index + 1) % len(self.classes)
+            self.class_combo.setCurrentIndex(new_index)
+        elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            # Accept selection
+            self.accept()
+        else:
+            super().keyPressEvent(event)
+
+    def get_selected_class_index(self):
+        """Get the selected class index"""
+        return self.class_combo.currentIndex()
+
+
 class ImageTaggerMainWindow(QMainWindow):
     """Main application window"""
 
@@ -705,11 +964,13 @@ class ImageTaggerMainWindow(QMainWindow):
         self.current_image_path = None
         self.image_files = []
         self.current_image_index = -1
+        self.current_directory = None
+        self.label_mapping_file = None
 
         # Create UI
         self.create_menu_bar()
+        self.create_central_widget()  # Create canvas first
         self.create_toolbar()
-        self.create_central_widget()
         self.create_status_bar()
 
         # Connect signals
@@ -786,7 +1047,9 @@ class ImageTaggerMainWindow(QMainWindow):
         # Class selection
         toolbar.addWidget(QLabel("Class:"))
         self.class_combo = QComboBox()
-        self.class_combo.addItem("object")
+        # Initialize with canvas classes to ensure synchronization
+        for class_name in self.canvas.classes:
+            self.class_combo.addItem(class_name)
         self.class_combo.currentIndexChanged.connect(self.on_class_changed)
         toolbar.addWidget(self.class_combo)
 
@@ -833,6 +1096,7 @@ class ImageTaggerMainWindow(QMainWindow):
         self.canvas.bounding_box_created.connect(self.on_bounding_box_created)
         self.canvas.bounding_box_selected.connect(self.on_bounding_box_selected)
         self.canvas.bounding_box_deleted.connect(self.on_bounding_box_deleted)
+        self.canvas.bounding_box_class_edit_requested.connect(self.on_bounding_box_class_edit_requested)
 
     def load_settings(self):
         """Load application settings"""
@@ -843,6 +1107,86 @@ class ImageTaggerMainWindow(QMainWindow):
         """Save application settings"""
         # This could be expanded to save to a config file
         pass
+
+    def load_label_mapping(self):
+        """Load label mapping from label-mapping.txt file"""
+        if not self.label_mapping_file or not self.label_mapping_file.exists():
+            # Create default label mapping file
+            self.create_default_label_mapping()
+            return
+
+        try:
+            with open(self.label_mapping_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            # Parse labels from file
+            labels = []
+            for line in lines:
+                label = line.strip()
+                if label:  # Skip empty lines
+                    labels.append(label)
+
+            if labels:
+                # Update canvas classes
+                self.canvas.classes = labels
+                # Generate colors for each class
+                self.canvas.class_colors = []
+                for i in range(len(labels)):
+                    hue = i * 137.5  # Golden angle for good color distribution
+                    color = QColor.fromHsv(int(hue) % 360, 255, 255)
+                    self.canvas.class_colors.append(color)
+
+                # Update class combo box
+                self.class_combo.clear()
+                for label in labels:
+                    self.class_combo.addItem(label)
+
+                # Reset current class index
+                self.canvas.current_class_index = 0
+                self.class_combo.setCurrentIndex(0)
+            else:
+                # Empty file, create default
+                self.create_default_label_mapping()
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not load label mapping: {str(e)}")
+            self.create_default_label_mapping()
+
+    def create_default_label_mapping(self):
+        """Create default label-mapping.txt file"""
+        if not self.label_mapping_file:
+            return
+
+        try:
+            # Create default classes
+            default_classes = ["object"]
+            self.canvas.classes = default_classes
+            self.canvas.class_colors = [QColor(255, 0, 0)]  # Default red color
+
+
+            # Update class combo box
+            self.class_combo.clear()
+            self.class_combo.addItem("object")
+            self.canvas.current_class_index = 0
+            self.class_combo.setCurrentIndex(0)
+
+            # Save to file
+            self.save_label_mapping()
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not create label mapping: {str(e)}")
+
+    def save_label_mapping(self):
+        """Save current classes to label-mapping.txt file"""
+        if not self.label_mapping_file:
+            return
+
+        try:
+            with open(self.label_mapping_file, 'w', encoding='utf-8') as f:
+                for label in self.canvas.classes:
+                    f.write(f"{label}\n")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not save label mapping: {str(e)}")
 
     def open_directory(self):
         """Open a directory containing images"""
@@ -856,6 +1200,12 @@ class ImageTaggerMainWindow(QMainWindow):
 
     def load_directory(self, directory):
         """Load all images from directory"""
+        self.current_directory = directory
+        self.label_mapping_file = Path(directory) / "label-mapping.txt"
+
+        # Load label mapping first
+        self.load_label_mapping()
+
         image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
         self.image_files = []
 
@@ -901,9 +1251,13 @@ class ImageTaggerMainWindow(QMainWindow):
         if self.current_image_path:
             filename = Path(self.current_image_path).name
             box_count = len(self.canvas.bounding_boxes)
+            selected_count = len(self.canvas.selected_boxes)
             selected_info = ""
-            if self.canvas.selected_box:
-                selected_info = f" - Selected: {self.canvas.selected_box.class_name} (Press Delete/Backspace to remove)"
+            if selected_count > 0:
+                if selected_count == 1 and self.canvas.selected_box:
+                    selected_info = f" - Selected: {self.canvas.selected_box.class_name} (Press Delete/Backspace to remove)"
+                else:
+                    selected_info = f" - {selected_count} boxes selected"
             self.status_bar.showMessage(
                 f"Image {self.current_image_index + 1}/{len(self.image_files)}: {filename} - {box_count} bounding boxes{selected_info}"
             )
@@ -960,6 +1314,8 @@ class ImageTaggerMainWindow(QMainWindow):
                 else:
                     box.class_name = self.canvas.classes[box.class_index]
 
+            # Save label mapping to file
+            self.save_label_mapping()
             self.canvas.update()
 
     def fit_to_window(self):
@@ -997,9 +1353,125 @@ class ImageTaggerMainWindow(QMainWindow):
         """Handle bounding box deletion"""
         self.update_status_bar()
 
+    def quick_add_class(self):
+        """Open quick add class dialog"""
+        dialog = QuickAddClassDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            class_name = dialog.get_class_name()
+            if class_name and class_name not in self.canvas.classes:
+                color = dialog.get_color()
+                self.canvas.add_class(class_name, color)
+
+                # Update class combo box
+                self.class_combo.addItem(class_name)
+
+                # Set the new class as current
+                new_index = len(self.canvas.classes) - 1
+                self.class_combo.setCurrentIndex(new_index)
+                self.canvas.set_current_class(new_index)
+
+                # Save label mapping to file
+                self.save_label_mapping()
+
+    def select_all_boxes(self):
+        """Select all bounding boxes in current image"""
+        self.canvas.select_all_boxes()
+        self.update_status_bar()
+
+    def copy_boxes(self):
+        """Copy selected boxes to clipboard"""
+        self.canvas.copy_boxes()
+
+    def cut_boxes(self):
+        """Cut selected boxes to clipboard"""
+        self.canvas.cut_boxes()
+        self.update_status_bar()
+
+    def paste_boxes(self):
+        """Paste boxes from clipboard"""
+        self.canvas.paste_boxes()
+        self.update_status_bar()
+
+    def switch_to_next_class(self):
+        """Switch to next class"""
+        self.canvas.switch_to_next_class()
+        self.class_combo.setCurrentIndex(self.canvas.current_class_index)
+
+    def switch_to_previous_class(self):
+        """Switch to previous class"""
+        self.canvas.switch_to_previous_class()
+        self.class_combo.setCurrentIndex(self.canvas.current_class_index)
+
+    def on_bounding_box_class_edit_requested(self, box):
+        """Handle request to edit bounding box class"""
+        # Ensure we have classes available
+        if not self.canvas.classes:
+            self.canvas.classes = ["object"]
+            self.canvas.class_colors = [QColor(255, 0, 0)]
+
+        dialog = ClassSelectionDialog(
+            self.canvas.classes,
+            self.canvas.class_colors,
+            box.class_index,
+            self
+        )
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            new_class_index = dialog.get_selected_class_index()
+            if new_class_index != box.class_index:
+                # Update the bounding box class
+                box.class_index = new_class_index
+                box.class_name = self.canvas.classes[new_class_index]
+
+                # Update the canvas
+                self.canvas.update()
+                self.update_status_bar()
+
     def keyPressEvent(self, event):
         """Handle keyboard shortcuts"""
-        if event.key() == Qt.Key.Key_Space:
+        modifiers = event.modifiers()
+
+        # Handle Cmd/Ctrl combinations
+        if modifiers & Qt.KeyboardModifier.ControlModifier or modifiers & Qt.KeyboardModifier.MetaModifier:
+            if event.key() == Qt.Key.Key_A:
+                # Cmd+A - Select all tags
+                self.select_all_boxes()
+            elif event.key() == Qt.Key.Key_C:
+                # Cmd+C - Copy all tags
+                self.copy_boxes()
+            elif event.key() == Qt.Key.Key_V:
+                # Cmd+V - Paste all tags
+                self.paste_boxes()
+            elif event.key() == Qt.Key.Key_X:
+                # Cmd+X - Cut all tags
+                self.cut_boxes()
+            elif event.key() == Qt.Key.Key_N:
+                # Cmd+N - New tag
+                self.quick_add_class()
+            elif event.key() == Qt.Key.Key_Up:
+                # Cmd+Up - Move to previous class
+                self.switch_to_previous_class()
+            elif event.key() == Qt.Key.Key_Down:
+                # Cmd+Down - Move to next class
+                self.switch_to_next_class()
+            elif event.key() == Qt.Key.Key_Left:
+                # Cmd+Left - Move to previous image
+                self.previous_image()
+            elif event.key() == Qt.Key.Key_Right:
+                # Cmd+Right - Move to next image
+                self.next_image()
+            else:
+                super().keyPressEvent(event)
+        # Handle Tab combinations
+        elif event.key() == Qt.Key.Key_Tab:
+            if modifiers & Qt.KeyboardModifier.ShiftModifier:
+                # Shift+Tab - Switch to previous class
+                self.switch_to_previous_class()
+            else:
+                # Tab - Switch to next class
+                self.switch_to_next_class()
+        # Handle other keys
+        elif event.key() == Qt.Key.Key_Space:
             self.next_image()
         elif event.key() == Qt.Key.Key_Backspace:
             # Check if a bounding box is selected first
