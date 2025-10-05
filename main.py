@@ -472,20 +472,14 @@ class ImageCanvas(QWidget):
 
     def keyPressEvent(self, event):
         """Handle keyboard events"""
-        if event.key() == Qt.Key.Key_Delete and self.selected_box:
-            # Delete selected bounding box
-            if self.selected_box in self.bounding_boxes:
-                self.bounding_boxes.remove(self.selected_box)
-                self.bounding_box_deleted.emit(self.selected_box)
-                self.selected_box = None
-                self.update()
-
-        elif event.key() == Qt.Key.Key_Escape:
+        if event.key() == Qt.Key.Key_Escape:
             # Cancel current operation
             self.drawing = False
             self.current_box = None
             self.selected_box = None
             self.update()
+        else:
+            super().keyPressEvent(event)
 
     def resize_box(self, current_pos):
         """Resize the selected box based on the current mouse position"""
@@ -907,8 +901,11 @@ class ImageTaggerMainWindow(QMainWindow):
         if self.current_image_path:
             filename = Path(self.current_image_path).name
             box_count = len(self.canvas.bounding_boxes)
+            selected_info = ""
+            if self.canvas.selected_box:
+                selected_info = f" - Selected: {self.canvas.selected_box.class_name} (Press Delete/Backspace to remove)"
             self.status_bar.showMessage(
-                f"Image {self.current_image_index + 1}/{len(self.image_files)}: {filename} - {box_count} bounding boxes"
+                f"Image {self.current_image_index + 1}/{len(self.image_files)}: {filename} - {box_count} bounding boxes{selected_info}"
             )
 
     def previous_image(self):
@@ -993,6 +990,9 @@ class ImageTaggerMainWindow(QMainWindow):
         if box.class_index < len(self.canvas.classes):
             self.class_combo.setCurrentIndex(box.class_index)
 
+        # Update status bar to show selection
+        self.update_status_bar()
+
     def on_bounding_box_deleted(self, box):
         """Handle bounding box deletion"""
         self.update_status_bar()
@@ -1002,7 +1002,25 @@ class ImageTaggerMainWindow(QMainWindow):
         if event.key() == Qt.Key.Key_Space:
             self.next_image()
         elif event.key() == Qt.Key.Key_Backspace:
-            self.previous_image()
+            # Check if a bounding box is selected first
+            if self.canvas.selected_box:
+                # Delete the selected bounding box
+                if self.canvas.selected_box in self.canvas.bounding_boxes:
+                    self.canvas.bounding_boxes.remove(self.canvas.selected_box)
+                    self.canvas.bounding_box_deleted.emit(self.canvas.selected_box)
+                    self.canvas.selected_box = None
+                    self.canvas.update()
+            else:
+                # No box selected, go to previous image
+                self.previous_image()
+        elif event.key() == Qt.Key.Key_Delete:
+            # Delete selected bounding box
+            if self.canvas.selected_box:
+                if self.canvas.selected_box in self.canvas.bounding_boxes:
+                    self.canvas.bounding_boxes.remove(self.canvas.selected_box)
+                    self.canvas.bounding_box_deleted.emit(self.canvas.selected_box)
+                    self.canvas.selected_box = None
+                    self.canvas.update()
         elif event.key() == Qt.Key.Key_F:
             self.fit_to_window()
         else:
