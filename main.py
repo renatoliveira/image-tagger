@@ -76,6 +76,13 @@ class ImageCanvas(QWidget):
         self.last_mouse_pos = QPoint()
         self.panning = False
 
+        # Resize handle properties
+        self.handle_size = 8
+        self.resize_handle = None  # Which handle is being dragged
+        self.moving_box = False    # Whether we're moving the entire box
+        self.drag_start_pos = QPoint()
+        self.drag_start_box = None  # Original box state when drag started
+
     def set_image(self, image_path):
         """Load and display an image"""
         try:
@@ -205,6 +212,59 @@ class ImageCanvas(QWidget):
         widget_point = image_point * self.scale_factor + self.offset
         return widget_point
 
+    def get_resize_handles(self, box):
+        """Get resize handles for a bounding box in widget coordinates"""
+        widget_point = self.get_widget_coordinates(QPoint(int(box.x), int(box.y)))
+        widget_width = int(box.width * self.scale_factor)
+        widget_height = int(box.height * self.scale_factor)
+
+        handles = {}
+        half_handle = self.handle_size // 2
+
+        # Corner handles
+        handles['top-left'] = QRect(widget_point.x() - half_handle, widget_point.y() - half_handle,
+                                   self.handle_size, self.handle_size)
+        handles['top-right'] = QRect(widget_point.x() + widget_width - half_handle, widget_point.y() - half_handle,
+                                    self.handle_size, self.handle_size)
+        handles['bottom-left'] = QRect(widget_point.x() - half_handle, widget_point.y() + widget_height - half_handle,
+                                      self.handle_size, self.handle_size)
+        handles['bottom-right'] = QRect(widget_point.x() + widget_width - half_handle, widget_point.y() + widget_height - half_handle,
+                                       self.handle_size, self.handle_size)
+
+        # Edge handles
+        handles['top'] = QRect(widget_point.x() + widget_width // 2 - half_handle, widget_point.y() - half_handle,
+                              self.handle_size, self.handle_size)
+        handles['bottom'] = QRect(widget_point.x() + widget_width // 2 - half_handle, widget_point.y() + widget_height - half_handle,
+                                 self.handle_size, self.handle_size)
+        handles['left'] = QRect(widget_point.x() - half_handle, widget_point.y() + widget_height // 2 - half_handle,
+                               self.handle_size, self.handle_size)
+        handles['right'] = QRect(widget_point.x() + widget_width - half_handle, widget_point.y() + widget_height // 2 - half_handle,
+                                self.handle_size, self.handle_size)
+
+        return handles
+
+    def get_handle_at_point(self, point, box):
+        """Get which resize handle (if any) is at the given point"""
+        handles = self.get_resize_handles(box)
+        for handle_name, handle_rect in handles.items():
+            if handle_rect.contains(point):
+                return handle_name
+        return None
+
+    def get_cursor_for_handle(self, handle_name):
+        """Get the appropriate cursor for a resize handle"""
+        cursor_map = {
+            'top-left': Qt.CursorShape.SizeFDiagCursor,
+            'top-right': Qt.CursorShape.SizeBDiagCursor,
+            'bottom-left': Qt.CursorShape.SizeBDiagCursor,
+            'bottom-right': Qt.CursorShape.SizeFDiagCursor,
+            'top': Qt.CursorShape.SizeVerCursor,
+            'bottom': Qt.CursorShape.SizeVerCursor,
+            'left': Qt.CursorShape.SizeHorCursor,
+            'right': Qt.CursorShape.SizeHorCursor,
+        }
+        return cursor_map.get(handle_name, Qt.CursorShape.ArrowCursor)
+
     def paintEvent(self, event):
         """Paint the image and bounding boxes"""
         painter = QPainter(self)
@@ -241,6 +301,14 @@ class ImageCanvas(QWidget):
                 painter.setPen(QPen(QColor(255, 255, 255), 1))
                 painter.drawText(widget_rect.topLeft() + QPoint(5, 15), box.class_name)
 
+                # Draw resize handles for selected box
+                if box == self.selected_box:
+                    handles = self.get_resize_handles(box)
+                    painter.setPen(QPen(QColor(255, 255, 255), 2))
+                    painter.setBrush(QBrush(QColor(255, 255, 255)))
+                    for handle_rect in handles.values():
+                        painter.drawRect(handle_rect)
+
             # Draw current box being drawn
             if self.drawing and self.current_box:
                 widget_point = self.get_widget_coordinates(QPoint(int(self.current_box.x), int(self.current_box.y)))
@@ -259,6 +327,19 @@ class ImageCanvas(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             img_point = self.get_image_coordinates(event.pos())
 
+            # Check if clicking on resize handle first
+            if self.selected_box:
+                handle = self.get_handle_at_point(event.pos(), self.selected_box)
+                if handle:
+                    self.resize_handle = handle
+                    self.drag_start_pos = event.pos()
+                    self.drag_start_box = BoundingBox(
+                        self.selected_box.x, self.selected_box.y,
+                        self.selected_box.width, self.selected_box.height,
+                        self.selected_box.class_index, self.selected_box.class_name
+                    )
+                    return
+
             # Check if clicking on existing bounding box
             clicked_box = None
             for box in reversed(self.bounding_boxes):  # Check from top to bottom
@@ -267,8 +348,15 @@ class ImageCanvas(QWidget):
                     break
 
             if clicked_box:
-                # Select existing box
+                # Select existing box and prepare for moving
                 self.selected_box = clicked_box
+                self.moving_box = True
+                self.drag_start_pos = event.pos()
+                self.drag_start_box = BoundingBox(
+                    clicked_box.x, clicked_box.y,
+                    clicked_box.width, clicked_box.height,
+                    clicked_box.class_index, clicked_box.class_name
+                )
                 self.bounding_box_selected.emit(clicked_box)
             else:
                 # Start drawing new box
@@ -297,32 +385,57 @@ class ImageCanvas(QWidget):
             self.current_box.height = img_point.y() - self.start_point.y()
             self.update()
 
+        elif self.resize_handle and self.selected_box and self.drag_start_box:
+            # Resize the selected box
+            self.resize_box(event.pos())
+            self.update()
+
+        elif self.moving_box and self.selected_box and self.drag_start_box:
+            # Move the selected box
+            self.move_box(event.pos())
+            self.update()
+
         elif self.panning:
             # Pan the image
             delta = event.pos() - self.last_mouse_pos
             self.offset += delta
             self.last_mouse_pos = event.pos()
             self.update()
+        else:
+            # Update cursor based on what's under the mouse
+            self.update_cursor(event.pos())
 
     def mouseReleaseEvent(self, event):
         """Handle mouse release events"""
-        if event.button() == Qt.MouseButton.LeftButton and self.drawing:
-            # Finish drawing box
-            if self.current_box and abs(self.current_box.width) > 5 and abs(self.current_box.height) > 5:
-                # Ensure positive width and height
-                if self.current_box.width < 0:
-                    self.current_box.x += self.current_box.width
-                    self.current_box.width = abs(self.current_box.width)
-                if self.current_box.height < 0:
-                    self.current_box.y += self.current_box.height
-                    self.current_box.height = abs(self.current_box.height)
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.drawing:
+                # Finish drawing box
+                if self.current_box and abs(self.current_box.width) > 5 and abs(self.current_box.height) > 5:
+                    # Ensure positive width and height
+                    if self.current_box.width < 0:
+                        self.current_box.x += self.current_box.width
+                        self.current_box.width = abs(self.current_box.width)
+                    if self.current_box.height < 0:
+                        self.current_box.y += self.current_box.height
+                        self.current_box.height = abs(self.current_box.height)
 
-                self.bounding_boxes.append(self.current_box)
-                self.bounding_box_created.emit(self.current_box)
-                self.selected_box = self.current_box
+                    self.bounding_boxes.append(self.current_box)
+                    self.bounding_box_created.emit(self.current_box)
+                    self.selected_box = self.current_box
 
-            self.drawing = False
-            self.current_box = None
+                self.drawing = False
+                self.current_box = None
+
+            elif self.resize_handle:
+                # Finish resizing
+                self.resize_handle = None
+                self.drag_start_box = None
+
+            elif self.moving_box:
+                # Finish moving
+                self.moving_box = False
+                self.drag_start_box = None
+
             self.update()
 
         elif event.button() == Qt.MouseButton.RightButton:
@@ -373,6 +486,62 @@ class ImageCanvas(QWidget):
             self.current_box = None
             self.selected_box = None
             self.update()
+
+    def resize_box(self, current_pos):
+        """Resize the selected box based on the current mouse position"""
+        if not self.selected_box or not self.drag_start_box:
+            return
+
+        # Calculate the delta in image coordinates
+        start_img_pos = self.get_image_coordinates(self.drag_start_pos)
+        current_img_pos = self.get_image_coordinates(current_pos)
+        delta_x = current_img_pos.x() - start_img_pos.x()
+        delta_y = current_img_pos.y() - start_img_pos.y()
+
+        # Apply resize based on which handle is being dragged
+        handle = self.resize_handle
+
+        if 'left' in handle:
+            self.selected_box.x = self.drag_start_box.x + delta_x
+            self.selected_box.width = self.drag_start_box.width - delta_x
+        if 'right' in handle:
+            self.selected_box.width = self.drag_start_box.width + delta_x
+        if 'top' in handle:
+            self.selected_box.y = self.drag_start_box.y + delta_y
+            self.selected_box.height = self.drag_start_box.height - delta_y
+        if 'bottom' in handle:
+            self.selected_box.height = self.drag_start_box.height + delta_y
+
+        # Ensure minimum size
+        self.selected_box.width = max(10, self.selected_box.width)
+        self.selected_box.height = max(10, self.selected_box.height)
+
+    def move_box(self, current_pos):
+        """Move the selected box based on the current mouse position"""
+        if not self.selected_box or not self.drag_start_box:
+            return
+
+        # Calculate the delta in image coordinates
+        start_img_pos = self.get_image_coordinates(self.drag_start_pos)
+        current_img_pos = self.get_image_coordinates(current_pos)
+        delta_x = current_img_pos.x() - start_img_pos.x()
+        delta_y = current_img_pos.y() - start_img_pos.y()
+
+        # Apply the delta to the original position
+        self.selected_box.x = self.drag_start_box.x + delta_x
+        self.selected_box.y = self.drag_start_box.y + delta_y
+
+    def update_cursor(self, pos):
+        """Update cursor based on what's under the mouse"""
+        if self.selected_box:
+            handle = self.get_handle_at_point(pos, self.selected_box)
+            if handle:
+                cursor = self.get_cursor_for_handle(handle)
+                self.setCursor(cursor)
+                return
+
+        # Default cursor
+        self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def resizeEvent(self, event):
         """Handle widget resize"""
