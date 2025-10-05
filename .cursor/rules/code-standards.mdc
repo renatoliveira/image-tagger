@@ -1,0 +1,58 @@
+---
+globs: *.py
+description: "Python coding standards and best practices for the project"
+---
+
+# Python Code Standards
+
+## Code Style
+- Follow PEP 8 guidelines
+- Use type hints for function parameters and return values
+- Maximum line length: 88 characters (Black formatter standard)
+- Use meaningful variable and function names
+
+## Project Structure
+```python
+# Recommended module organization
+image_tagger/
+├── main.py              # Application entry point
+├── ui/
+│   ├── __init__.py
+│   ├── main_window.py   # Main application window
+│   ├── canvas.py        # Image display and annotation canvas
+│   └── dialogs.py       # Modal dialogs
+├── core/
+│   ├── __init__.py
+│   ├── image_loader.py  # Image loading and processing
+│   ├── yolo_format.py   # YOLO format I/O operations
+│   └── annotations.py   # Bounding box data structures
+└── utils/
+    ├── __init__.py
+    └── file_utils.py    # File system utilities
+```
+
+## Error Handling
+- Use specific exception types
+- Log errors with appropriate levels
+- Provide user-friendly error messages
+- Validate inputs at function boundaries
+
+## Dependencies
+- Use [pyproject.toml](mdc:pyproject.toml) for dependency management
+- Use `uv` package manager for all dependency operations
+- Run `uv add package-name` to add new dependencies
+- Use `uv add --dev package-name` for development dependencies
+- Pin major versions for stability in pyproject.toml
+- Document all external dependencies
+
+## Testing
+- Write unit tests for core functionality
+- Test YOLO format parsing and generation
+- Test image loading with various formats
+- Mock file I/O operations in tests
+
+## Documentation
+- Use docstrings for all public functions and classes
+- Include type information in docstrings
+- Document complex algorithms and coordinate transformations
+- Maintain up-to-date README with usage examples

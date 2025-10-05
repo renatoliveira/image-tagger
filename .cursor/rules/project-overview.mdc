@@ -1,0 +1,32 @@
+---
+alwaysApply: true
+description: "Project overview and architecture for image tagging application"
+---
+
+# Image Tagger Application
+
+This is a Python application for tagging images with bounding boxes for training image recognition models like YOLOv5.
+
+## Project Structure
+- [main.py](mdc:main.py) - Main application entry point
+- [pyproject.toml](mdc:pyproject.toml) - Project configuration and dependencies
+- [README.md](mdc:README.md) - Project documentation
+
+## Core Functionality
+1. **Directory Input**: Accept a path to a directory containing images
+2. **Image Display**: Load and display images in a user interface
+3. **Bounding Box Creation**: Allow users to drag and create rectangular regions on images
+4. **YOLO Format Export**: Save bounding boxes in YOLO format (.txt files)
+
+## YOLO Format Requirements
+- One row per object bounding box
+- Format: `class_index x_center y_center width height`
+- All coordinates normalized to 0-1 range
+- Class indices are zero-indexed
+- Text file has same name as image (with .txt extension)
+
+## Technology Stack
+- Python 3.13+
+- GUI framework (Tkinter/PyQt/Kivy recommended)
+- Image processing (PIL/Pillow)
+- File I/O for YOLO format export

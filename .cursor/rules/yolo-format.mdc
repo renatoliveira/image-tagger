@@ -1,0 +1,41 @@
+---
+globs: *.py
+description: "YOLO format specifications and implementation guidelines"
+---
+
+# YOLO Format Implementation
+
+## File Format Specifications
+- **File Extension**: `.txt` (same name as image file)
+- **Encoding**: UTF-8
+- **Line Format**: `class_index x_center y_center width height`
+- **Separator**: Single space between values
+
+## Coordinate Normalization
+```python
+# Convert pixel coordinates to normalized YOLO format
+def normalize_coordinates(x, y, width, height, img_width, img_height):
+    x_center = (x + width / 2) / img_width
+    y_center = (y + height / 2) / img_height
+    norm_width = width / img_width
+    norm_height = height / img_height
+    return x_center, y_center, norm_width, norm_height
+```
+
+## Class Index Management
+- Start with class index 0
+- Maintain a mapping of class names to indices
+- Allow user to select/assign class indices when creating bounding boxes
+
+## File I/O Operations
+- Read existing .txt files to load previous annotations
+- Write/update .txt files when bounding boxes are modified
+- Handle file encoding errors gracefully
+- Validate coordinate ranges (0-1) before writing
+
+## Example YOLO File Content
+```
+0 0.5 0.3 0.2 0.4
+1 0.7 0.6 0.15 0.25
+0 0.2 0.8 0.3 0.2
+```

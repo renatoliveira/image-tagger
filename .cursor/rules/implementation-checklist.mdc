@@ -1,0 +1,54 @@
+---
+alwaysApply: false
+description: "Implementation checklist and development milestones"
+---
+
+# Implementation Checklist
+
+## Phase 1: Core Infrastructure
+- [ ] Set up project structure and dependencies with `uv`
+- [ ] Run `uv sync` to create virtual environment
+- [ ] Add GUI framework dependency: `uv add tkinter` or `uv add PyQt6`
+- [ ] Add image processing dependency: `uv add Pillow`
+- [ ] Implement basic GUI framework (Tkinter/PyQt)
+- [ ] Create image loading functionality
+- [ ] Implement basic file I/O operations
+
+## Phase 2: Image Display
+- [ ] Create image display canvas
+- [ ] Implement zoom and pan functionality
+- [ ] Add image navigation (previous/next)
+- [ ] Handle different image formats (JPEG, PNG, etc.)
+
+## Phase 3: Bounding Box Creation
+- [ ] Implement mouse event handling for rectangle drawing
+- [ ] Create bounding box data structures
+- [ ] Add visual feedback for drag operations
+- [ ] Implement bounding box selection and editing
+
+## Phase 4: YOLO Format Integration
+- [ ] Implement coordinate normalization functions
+- [ ] Create YOLO format file reader/writer
+- [ ] Add class index management
+- [ ] Test YOLO format compliance
+
+## Phase 5: User Experience
+- [ ] Add class selection interface
+- [ ] Implement keyboard shortcuts
+- [ ] Add undo/redo functionality
+- [ ] Create context menus for bounding boxes
+
+## Phase 6: Polish and Testing
+- [ ] Add comprehensive error handling
+- [ ] Implement progress indicators
+- [ ] Add configuration options
+- [ ] Write unit tests
+- [ ] Create user documentation
+
+## Key Features to Implement
+1. **Directory Selection**: Browse and select image directories
+2. **Image Navigation**: Move between images in directory
+3. **Bounding Box Tools**: Create, edit, delete rectangular annotations
+4. **Class Management**: Assign and manage object classes
+5. **Auto-save**: Automatically save annotations as .txt files
+6. **Export Options**: Batch export or individual file operations

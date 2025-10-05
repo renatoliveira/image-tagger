@@ -1,0 +1,58 @@
+---
+alwaysApply: true
+description: "UV package manager configuration and usage guidelines"
+---
+
+# UV Package Manager
+
+This project uses `uv` as the Python package manager instead of pip, conda, or other alternatives.
+
+## UV Configuration
+- **Project File**: [pyproject.toml](mdc:pyproject.toml) - Contains all project metadata and dependencies
+- **Lock File**: `uv.lock` - Generated automatically, contains exact dependency versions
+- **Virtual Environment**: Managed automatically by `uv` in `.venv/` directory
+
+## Common UV Commands
+```bash
+# Install dependencies from pyproject.toml
+uv sync
+
+# Add a new dependency
+uv add package-name
+
+# Add a development dependency
+uv add --dev package-name
+
+# Remove a dependency
+uv remove package-name
+
+# Run the application
+uv run python main.py
+
+# Run scripts defined in pyproject.toml
+uv run script-name
+
+# Update dependencies
+uv lock --upgrade
+
+# Show dependency tree
+uv tree
+```
+
+## Project Setup
+- Always use `uv sync` to install dependencies
+- Use `uv add` instead of `pip install` for adding packages
+- Dependencies are automatically added to [pyproject.toml](mdc:pyproject.toml)
+- Virtual environment is created and managed automatically
+
+## Development Workflow
+1. **Initial Setup**: `uv sync` to create virtual environment and install dependencies
+2. **Adding Dependencies**: `uv add package-name` to add new packages
+3. **Running Code**: `uv run python main.py` to run with proper environment
+4. **Updating**: `uv lock --upgrade` to update dependency versions
+
+## Benefits of UV
+- **Speed**: Significantly faster than pip
+- **Reliability**: Better dependency resolution
+- **Reproducibility**: Lock file ensures consistent environments
+- **Simplicity**: Single tool for environment and package management

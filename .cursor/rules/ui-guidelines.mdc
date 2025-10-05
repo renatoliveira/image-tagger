@@ -1,0 +1,48 @@
+---
+globs: *.py
+description: "User interface design and interaction guidelines"
+---
+
+# UI Design Guidelines
+
+## Main Window Layout
+- **Image Display Area**: Central canvas for image viewing and annotation
+- **Toolbar**: Buttons for navigation, class selection, and actions
+- **Status Bar**: Display current image info, coordinates, and instructions
+- **File Browser**: Optional sidebar for image navigation
+
+## Bounding Box Interaction
+- **Mouse Events**:
+  - Click and drag to create rectangles
+  - Click on existing boxes to select/edit
+  - Right-click for context menu (delete, change class)
+- **Visual Feedback**:
+  - Highlight selected bounding box
+  - Show coordinates during drag operations
+  - Different colors for different classes
+
+## Navigation Controls
+- **Previous/Next Image**: Arrow keys or buttons
+- **Zoom**: Mouse wheel or zoom controls
+- **Pan**: Drag when zoomed in
+- **Fit to Window**: Auto-resize image to fit display
+
+## Class Management
+- **Class Selection**: Dropdown or button group
+- **Add New Class**: Dialog for creating new classes
+- **Class Colors**: Assign distinct colors to each class
+- **Class Statistics**: Show count of annotations per class
+
+## Keyboard Shortcuts
+- `Space`: Next image
+- `Backspace`: Previous image
+- `Delete`: Remove selected bounding box
+- `Ctrl+S`: Save annotations
+- `Ctrl+Z`: Undo last action
+- `Escape`: Cancel current operation
+
+## Error Handling
+- Display user-friendly error messages
+- Validate image file formats
+- Handle corrupted or missing files gracefully
+- Provide feedback for save operations
