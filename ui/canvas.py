@@ -352,6 +352,8 @@ class ImageCanvas(QWidget):
                     painter.setBrush(QBrush(QColor(255, 255, 255)))
                     for handle_rect in handles.values():
                         painter.drawRect(handle_rect)
+                    # Reset brush to transparent to avoid affecting other drawings
+                    painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
 
             # Draw current box being drawn
             if self.drawing and self.current_box:
