@@ -40,6 +40,9 @@ class ImageTaggerMainWindow(QMainWindow):
         # Load settings
         self.load_settings()
 
+        # Ensure canvas gets focus for keyboard events
+        self.canvas.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
     def create_menu_bar(self):
         """Create the menu bar"""
         menubar = self.menuBar()
@@ -142,6 +145,8 @@ class ImageTaggerMainWindow(QMainWindow):
         self.image_list = QListWidget()
         self.image_list.setMaximumWidth(200)
         self.image_list.itemClicked.connect(self.on_image_selected)
+        # Disable keyboard navigation for the list widget to prevent focus issues
+        self.image_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         layout.addWidget(self.image_list)
 
         central_widget.setLayout(layout)
@@ -158,6 +163,9 @@ class ImageTaggerMainWindow(QMainWindow):
         self.canvas.bounding_box_selected.connect(self.on_bounding_box_selected)
         self.canvas.bounding_box_deleted.connect(self.on_bounding_box_deleted)
         self.canvas.bounding_box_class_edit_requested.connect(self.on_bounding_box_class_edit_requested)
+
+        # Ensure canvas gets focus when clicked
+        self.canvas.mousePressEvent = self.canvas_mouse_press_event
 
     def load_settings(self):
         """Load application settings"""
@@ -478,6 +486,41 @@ class ImageTaggerMainWindow(QMainWindow):
         """Handle keyboard shortcuts"""
         modifiers = event.modifiers()
 
+        # Handle single letter keys first (before list widget captures them)
+        if not modifiers:  # No modifier keys pressed
+            if event.key() == Qt.Key.Key_W:
+                # W - Switch to previous class
+                self.switch_to_previous_class()
+                # Deselect any selected bounding box
+                if self.canvas.selected_box:
+                    self.canvas.selected_box = None
+                    self.canvas.selected_boxes = []
+                    self.canvas.update()
+                    self.update_status_bar()
+                event.accept()
+                return
+            elif event.key() == Qt.Key.Key_S:
+                # S - Switch to next class
+                self.switch_to_next_class()
+                # Deselect any selected bounding box
+                if self.canvas.selected_box:
+                    self.canvas.selected_box = None
+                    self.canvas.selected_boxes = []
+                    self.canvas.update()
+                    self.update_status_bar()
+                event.accept()
+                return
+            elif event.key() == Qt.Key.Key_A:
+                # A - Previous image
+                self.previous_image()
+                event.accept()
+                return
+            elif event.key() == Qt.Key.Key_D:
+                # D - Next image
+                self.next_image()
+                event.accept()
+                return
+
         # Handle Cmd/Ctrl combinations
         if modifiers & Qt.KeyboardModifier.ControlModifier or modifiers & Qt.KeyboardModifier.MetaModifier:
             if event.key() == Qt.Key.Key_A:
@@ -544,6 +587,20 @@ class ImageTaggerMainWindow(QMainWindow):
             self.fit_to_window()
         else:
             super().keyPressEvent(event)
+
+    def canvas_mouse_press_event(self, event):
+        """Handle canvas mouse press and ensure focus"""
+        # Ensure canvas has focus for keyboard events
+        self.canvas.setFocus()
+        # Call the original mouse press event
+        from PyQt6.QtWidgets import QWidget
+        QWidget.mousePressEvent(self.canvas, event)
+
+    def showEvent(self, event):
+        """Handle window show event"""
+        super().showEvent(event)
+        # Ensure canvas gets focus when window is shown
+        self.canvas.setFocus()
 
     def closeEvent(self, event):
         """Handle application close"""
