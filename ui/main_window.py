@@ -164,7 +164,8 @@ class ImageTaggerMainWindow(QMainWindow):
         self.canvas.bounding_box_deleted.connect(self.on_bounding_box_deleted)
         self.canvas.bounding_box_class_edit_requested.connect(self.on_bounding_box_class_edit_requested)
 
-        # Ensure canvas gets focus when clicked
+        # Store original mouse press event and override it
+        self.original_canvas_mouse_press = self.canvas.mousePressEvent
         self.canvas.mousePressEvent = self.canvas_mouse_press_event
 
     def load_settings(self):
@@ -592,9 +593,8 @@ class ImageTaggerMainWindow(QMainWindow):
         """Handle canvas mouse press and ensure focus"""
         # Ensure canvas has focus for keyboard events
         self.canvas.setFocus()
-        # Call the original mouse press event
-        from PyQt6.QtWidgets import QWidget
-        QWidget.mousePressEvent(self.canvas, event)
+        # Call the original canvas mouse press event
+        self.original_canvas_mouse_press(event)
 
     def showEvent(self, event):
         """Handle window show event"""
